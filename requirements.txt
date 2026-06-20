@@ -1,0 +1,4 @@
+anthropic
+httpx
+aiosqlite
+croniter

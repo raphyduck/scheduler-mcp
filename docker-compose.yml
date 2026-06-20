@@ -1,0 +1,8 @@
+services:
+  scheduler:
+    build: .
+    container_name: scheduler-mcp
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
