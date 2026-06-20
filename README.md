@@ -11,6 +11,33 @@ Scheduler self-hosted. Control plane dans Notion (base « Programmation »), exe
 
 Plan de build detaille et decoupage en commits dans BUILD_BRIEF.md.
 
+## Ledger SQLite
+
+Le ledger local (module scheduler_mcp/ledger.py) est la source de verite a l'execution : la boucle de tick ne garde aucun etat en memoire. Mode WAL (lecteurs concurrents + un ecrivain), migrations versionnees via PRAGMA user_version. Tous les horodatages sont en ISO 8601 UTC (suffixe Z), longueur fixe, pour que la comparaison de chaines en SQL reste chronologique.
+
+Table jobs (declaratif, alimente par la sync Notion) :
+
+| colonne | role |
+| --- | --- |
+| id | cle primaire interne |
+| notion_page_id | identifiant de la page Programmation (unique) |
+| nom, type | titre et mode d'execution (notification, script, agent) |
+| schedule | expression cron ou ISO one-shot |
+| payload, toolset | JSON serialise (parametres et outils MCP autorises) |
+| statut | actif, en pause, a valider, termine |
+| next_run, last_run, last_result | etat d'ordonnancement et dernier resultat |
+| classif_reason | raison de classification (compiler) |
+| lock_owner, lock_expires | verrou par job (anti double-dispatch) |
+| created_at, updated_at | horodatages |
+
+Table runs (audit + idempotence) : id, job_id, scheduled_for, started_at, finished_at, result, detail, journal_page_id. La contrainte UNIQUE(job_id, scheduled_for) garantit l'idempotence : un creneau deja execute n'est pas rejoue.
+
+Garanties offertes par la couche d'acces :
+
+- Idempotence : start_run reclame un creneau (job_id, scheduled_for) ; il retourne None si le creneau existe deja.
+- Verrou par job : acquire_lock fait un UPDATE conditionnel atomique, un seul worker l'emporte ; le verrou expire (lock_expires) est repris automatiquement.
+- Rattrapage : due_jobs selectionne les jobs actifs dont next_run est echue, y compris en retard.
+
 ## Configuration
 
 Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est committe.
@@ -21,6 +48,14 @@ Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est comm
     docker compose up -d --build
     docker compose logs -f
 
+Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique les migrations et active WAL avant de lancer les boucles.
+
+## Tests
+
+    python -m tests.test_ledger
+
+Suite autonome (stdlib + aiosqlite) couvrant WAL, migrations, idempotence et verrou par job.
+
 ## Etat
 
-Scaffold initial runnable. Implementation commit par commit selon BUILD_BRIEF.md.
+Scaffold + ledger SQLite (schema jobs/runs, WAL, migrations, idempotence, verrou par job). Suite des commits selon BUILD_BRIEF.md.

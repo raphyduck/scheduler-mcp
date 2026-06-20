@@ -7,12 +7,13 @@ Skeleton runnable. Les boucles sont des stubs tant que les commits 3 et 4
 import asyncio
 
 from .config import Config, load_config
+from .ledger import Ledger
 from .logging_conf import get_logger, setup_logging
 
 log = get_logger("scheduler_mcp.main")
 
 
-async def tick_loop(cfg: Config) -> None:
+async def tick_loop(cfg: Config, ledger: Ledger) -> None:
     # TODO commit 4 : lire les jobs dus (next_run <= now, incl. retard) et dispatcher
     # vers un pool de workers borne (semaphore = max_concurrent_runs).
     while True:
@@ -20,7 +21,7 @@ async def tick_loop(cfg: Config) -> None:
         await asyncio.sleep(cfg.tick_interval_seconds)
 
 
-async def sync_loop(cfg: Config) -> None:
+async def sync_loop(cfg: Config, ledger: Ledger) -> None:
     # TODO commit 3 : sync base Notion Programmation -> ledger SQLite, calcul next_run,
     # write-back statut / derniere execution.
     while True:
@@ -32,7 +33,12 @@ async def main() -> None:
     cfg = load_config()
     setup_logging(cfg.log_level)
     log.info("scheduler_mcp.start", config=cfg.public_dict())
-    await asyncio.gather(tick_loop(cfg), sync_loop(cfg))
+    ledger = await Ledger(cfg.sqlite_path).connect()
+    log.info("ledger.ready", path=cfg.sqlite_path)
+    try:
+        await asyncio.gather(tick_loop(cfg, ledger), sync_loop(cfg, ledger))
+    finally:
+        await ledger.close()
 
 
 if __name__ == "__main__":
