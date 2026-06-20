@@ -15,6 +15,7 @@ class Config:
     tick_interval_seconds: int
     notion_sync_interval_seconds: int
     max_concurrent_runs: int
+    lock_ttl_seconds: int
     llm_model: str
     log_level: str
 
@@ -26,6 +27,7 @@ class Config:
             "tick_interval_seconds": self.tick_interval_seconds,
             "notion_sync_interval_seconds": self.notion_sync_interval_seconds,
             "max_concurrent_runs": self.max_concurrent_runs,
+            "lock_ttl_seconds": self.lock_ttl_seconds,
             "llm_model": self.llm_model,
             "log_level": self.log_level,
         }
@@ -42,6 +44,7 @@ def load_config() -> Config:
         tick_interval_seconds=int(os.environ.get("TICK_INTERVAL_SECONDS", "60")),
         notion_sync_interval_seconds=int(os.environ.get("NOTION_SYNC_INTERVAL_SECONDS", "300")),
         max_concurrent_runs=int(os.environ.get("MAX_CONCURRENT_RUNS", "4")),
+        lock_ttl_seconds=int(os.environ.get("LOCK_TTL_SECONDS", "900")),
         llm_model=os.environ.get("LLM_MODEL", "claude-haiku-4-5"),
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
     )
