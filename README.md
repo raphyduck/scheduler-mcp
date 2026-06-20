@@ -38,6 +38,24 @@ Garanties offertes par la couche d'acces :
 - Verrou par job : acquire_lock fait un UPDATE conditionnel atomique, un seul worker l'emporte ; le verrou expire (lock_expires) est repris automatiquement.
 - Rattrapage : due_jobs selectionne les jobs actifs dont next_run est echue, y compris en retard.
 
+## Sync Notion vers SQLite
+
+Le module scheduler_mcp/notion_sync.py rapatrie periodiquement (NOTION_SYNC_INTERVAL_SECONDS, defaut 300s) la base Programmation et la projette dans le ledger. La base Programmation fait foi pour les champs declaratifs ; le ledger fait foi pour l'etat d'execution, qui est repousse vers Notion pour rester visible.
+
+Cycle (sync_once) :
+
+1. Pull de toutes les pages de la data source Programmation (pagination geree).
+2. Projection de chaque page (parse_programmation_page). Les noms de proprietes sont resolus de facon tolerante aux accents et a la casse (echeance/cron, derniere execution, raison de classif), et la cle reelle est memorisee pour le write-back.
+3. Calcul de next_run (compute_next_run) :
+   - cron (croniter) : prochain creneau strictement apres l'ancre (derniere execution si presente, sinon maintenant). Un creneau manque pendant un downtime reste dans le passe pour etre rattrape, sans rejeu grace a l'idempotence.
+   - one-shot ISO : la date cible tant qu'elle n'a pas ete executee, sinon plus de next_run.
+4. Upsert dans le ledger. Un one-shot deja execute passe en statut termine (lifecycle).
+5. Write-back vers Notion (prochain run, derniere execution, statut), limite aux champs reellement modifies pour eviter le churn d'ecriture.
+
+Mapping des proprietes Programmation vers le ledger : Nom -> nom, type -> type, echeance/cron -> schedule, payload -> payload, toolset -> toolset, statut -> statut, prochain run -> next_run, derniere execution -> last_run, raison de classif -> classif_reason.
+
+L'API Notion est appelee en version NOTION_VERSION (defaut 2025-09-03, endpoints data sources). Sans NOTION_TOKEN, la sync est sautee et le service reste demarrable. Les entrees supprimees cote Notion ne sont pas encore purgees du ledger (a traiter ulterieurement).
+
 ## Configuration
 
 Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est committe.
@@ -53,9 +71,10 @@ Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique l
 ## Tests
 
     python -m tests.test_ledger
+    python -m tests.test_notion_sync
 
-Suite autonome (stdlib + aiosqlite) couvrant WAL, migrations, idempotence et verrou par job.
+Suites autonomes (stdlib + aiosqlite, faux client Notion sans reseau) couvrant WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents et write-back.
 
 ## Etat
 
-Scaffold + ledger SQLite (schema jobs/runs, WAL, migrations, idempotence, verrou par job). Suite des commits selon BUILD_BRIEF.md.
+Scaffold + ledger SQLite + sync Notion vers SQLite (pull Programmation, calcul next_run via croniter, write-back statut / derniere execution / prochain run). Suite des commits selon BUILD_BRIEF.md.

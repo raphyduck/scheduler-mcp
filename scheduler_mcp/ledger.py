@@ -69,11 +69,38 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime(_TS_FORMAT)
 
 
-def _dt_iso(dt: datetime) -> str:
+def to_iso(dt: datetime) -> str:
     """Convertit un datetime (naif suppose UTC) en ISO 8601 UTC, suffixe Z."""
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).strftime(_TS_FORMAT)
+
+
+# Alias interne historique.
+_dt_iso = to_iso
+
+
+def parse_iso(value: Optional[str]) -> Optional[datetime]:
+    """Parse un horodatage ISO 8601 (date seule, avec offset ou suffixe Z) en UTC.
+
+    Retourne None si la valeur est vide ou non interpretable. Tolerant pour
+    accepter aussi bien le format interne (now_iso) que les dates Notion.
+    """
+    if not value:
+        return None
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        try:
+            dt = datetime.strptime(raw, "%Y-%m-%d")
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _shift_iso(base_iso: str, seconds: int) -> str:
