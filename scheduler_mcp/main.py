@@ -1,7 +1,7 @@
 """Point d'entree. Lance la boucle de tick et la boucle de sync Notion.
 
-Skeleton runnable. Les boucles sont des stubs tant que les commits 3 et 4
-(voir BUILD_BRIEF.md) ne sont pas implementes.
+Skeleton runnable. La boucle de tick reste un stub tant que le commit 4
+(voir BUILD_BRIEF.md) n'est pas implemente ; la sync Notion -> SQLite est active.
 """
 
 import asyncio
@@ -9,6 +9,7 @@ import asyncio
 from .config import Config, load_config
 from .ledger import Ledger
 from .logging_conf import get_logger, setup_logging
+from .notion_sync import sync_once
 
 log = get_logger("scheduler_mcp.main")
 
@@ -22,10 +23,11 @@ async def tick_loop(cfg: Config, ledger: Ledger) -> None:
 
 
 async def sync_loop(cfg: Config, ledger: Ledger) -> None:
-    # TODO commit 3 : sync base Notion Programmation -> ledger SQLite, calcul next_run,
-    # write-back statut / derniere execution.
     while True:
-        log.info("notion_sync", note="stub, voir BUILD_BRIEF.md commit 3")
+        try:
+            await sync_once(cfg, ledger)
+        except Exception as exc:  # la sync ne doit jamais tuer le service.
+            log.error("notion_sync.error", error=str(exc), type=type(exc).__name__)
         await asyncio.sleep(cfg.notion_sync_interval_seconds)
 
 
