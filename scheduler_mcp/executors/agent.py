@@ -73,10 +73,13 @@ class AgentExecutor:
         cfg: Config,
         client: Any = None,
         server_registry: Optional[dict] = None,
+        auth: Any = None,
     ) -> None:
         self._cfg = cfg
         self._client = client
         self._registry = server_registry if server_registry is not None else cfg.mcp_servers
+        # Auth machine MCP : fournit le token a injecter dans les serveurs sans token propre.
+        self._auth = auth
 
     def _resolve_servers(self, toolset: list[str], trace: list[str]) -> list[dict]:
         """Mappe le toolset du job vers des entrees mcp_servers, Bitwarden exclu."""
@@ -97,6 +100,19 @@ class AgentExecutor:
             servers.append(server)
         return servers
 
+    async def _inject_machine_token(self, servers: list[dict]) -> None:
+        """Injecte le token machine dans les serveurs depourvus d'authorization_token."""
+        if not servers or self._auth is None:
+            return
+        without = [s for s in servers if "authorization_token" not in s]
+        if not without:
+            return
+        token = await self._auth.token()
+        if not token:
+            return
+        for server in without:
+            server["authorization_token"] = token
+
     async def execute(self, job: dict) -> RunResult:
         if self._client is None:
             return RunResult.fail("client Anthropic non configure (ANTHROPIC_API_KEY absent)")
@@ -116,6 +132,7 @@ class AgentExecutor:
 
         trace: list[str] = []
         servers = self._resolve_servers(job.get("toolset") or [], trace)
+        await self._inject_machine_token(servers)
 
         kwargs: dict[str, Any] = {
             "model": payload.get("model") or self._cfg.llm_model,

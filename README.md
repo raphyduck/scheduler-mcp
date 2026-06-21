@@ -110,6 +110,17 @@ Le module scheduler_mcp/executors/agent.py appelle l'API Anthropic Messages avec
 - Boucle d'outils : la requete est relancee tant que le serveur renvoie stop_reason pause_turn (reprise de la sequence d'outils MCP), avec un plafond d'iterations.
 - Trace complete dans runs.detail : texte, appels d'outils (serveur/outil + arguments), resultats, usage et stop_reason. Un refus (refusal) ressort en failure.
 - Least privilege / securite : Bitwarden (bw) est exclu du toolset, jamais auto-attribue a un job agent. Sans ANTHROPIC_API_KEY, le client est absent et le job ressort en failure explicite. Aucun secret n'est logge.
+- Auth machine MCP (voir ci-dessous) : les serveurs qui n'ont pas leur propre authorization_token recoivent le token machine.
+
+## Auth machine MCP
+
+Decision retenue : connecteur MCP natif de l'API Messages (deja en place dans l'executor agent). Le module scheduler_mcp/auth.py (MachineAuth) fournit le token machine a injecter dans les serveurs MCP du fleet, pour que l'executor s'authentifie sans interaction.
+
+- Token long-lived seede : MCP_AUTH_TOKEN, injecte tel quel dans les serveurs sans token propre. Le secret n'est jamais committe (.env / Bitwarden) ni logge.
+- Refresh optionnel via proxy : si MCP_OAUTH_PROXY_URL est defini, le token est recupere puis rafraichi en cache avant expiration (le refresh effectif, cadence ~180j via MCP_AUTH_REFRESH_DAYS, est gere cote mcp-oauth-proxy). Une erreur du proxy n'echoue pas le run.
+- Un token defini par serveur dans MCP_SERVERS a la priorite sur le token machine.
+
+Le contrat HTTP du proxy (POST avec le token seede en Bearer, reponse JSON access_token + expiry) est minimal et a confirmer au branchement reel.
 
 ## Compiler / registration
 
@@ -164,9 +175,10 @@ Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique l
     python -m tests.test_compiler
     python -m tests.test_journal
     python -m tests.test_mcp_server
+    python -m tests.test_auth
 
-Suites autonomes (stdlib + aiosqlite ; faux client Notion, faux client Anthropic et invoker MCP simules ; test_script lance de vrais subprocess locaux ; aucune dependance reseau). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, execution de script (capture, timeout, isolation env, sensibilite), executor agent (mapping toolset vers mcp_servers, boucle pause_turn, trace, exclusion Bitwarden), compiler (classification, scope du toolset, gate a_valider, repli heuristique), Journal (champs exacts avec accents, Agent constant, parent de page, resilience), et interface serveur MCP (add/list/update, echeance, gate a_valider).
+Suites autonomes (stdlib + aiosqlite ; faux client Notion, faux client Anthropic, faux client HTTP et invoker MCP simules ; test_script lance de vrais subprocess locaux ; aucune dependance reseau). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, execution de script (capture, timeout, isolation env, sensibilite), executor agent (mapping toolset vers mcp_servers, boucle pause_turn, trace, exclusion Bitwarden, injection du token machine), compiler (classification, scope du toolset, gate a_valider, repli heuristique), Journal (champs exacts avec accents, Agent constant, parent de page, resilience), interface serveur MCP (add/list/update, echeance, gate a_valider), et auth machine (token seede, refresh proxy avec mise en cache et expiration).
 
 ## Etat
 
-Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + les trois executors notification / script / agent + compiler de registration (least privilege, gate a_valider) + Journal Notion append-only apres chaque run + interface serveur MCP (add/list/update de taches en langage naturel). Restent l'auth machine MCP (token long-lived, refresh cote mcp-oauth-proxy) et la couche outils MCP des canaux selon BUILD_BRIEF.md.
+Decoupage du BUILD_BRIEF complet (commits 1 a 11) : scaffold, ledger SQLite, sync Notion vers SQLite, boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage), les trois executors notification / script / agent, compiler de registration (least privilege, gate a_valider), Journal Notion append-only, interface serveur MCP (add/list/update en langage naturel), et auth machine MCP (token seede + refresh proxy, connecteur natif). Reste a brancher au reel : la couche outils MCP des canaux de notification (commit 5, invoker concret) et la configuration du fleet (URL des serveurs MCP, secrets en .env / Bitwarden).

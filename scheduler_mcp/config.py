@@ -40,6 +40,12 @@ class Config:
     # Data source de la base Journal (optionnel) : si absent, le parent de page
     # utilise database_id (notion_journal_db).
     notion_journal_ds: str = ""
+    # Auth machine MCP (commit 11) : token long-lived seede (jamais en repo) injecte
+    # dans les serveurs MCP de l'executor agent. Si mcp_oauth_proxy_url est defini,
+    # le token est rafraichi via le proxy (cadence mcp_auth_refresh_days, defaut 180j).
+    mcp_auth_token: str = ""
+    mcp_oauth_proxy_url: str = ""
+    mcp_auth_refresh_days: int = 180
     # Registre des serveurs MCP du fleet : nom -> {url, authorization_token?}.
     # Alimente l'executor agent (toolset du job). Les tokens ne sont jamais logges.
     mcp_servers: dict = field(default_factory=dict)
@@ -58,6 +64,8 @@ class Config:
             "llm_max_tokens": self.llm_max_tokens,
             "log_level": self.log_level,
             "mcp_servers": sorted(self.mcp_servers),
+            "mcp_auth": bool(self.mcp_auth_token or self.mcp_oauth_proxy_url),
+            "mcp_oauth_proxy": bool(self.mcp_oauth_proxy_url),
         }
 
 
@@ -78,5 +86,8 @@ def load_config() -> Config:
         llm_max_tokens=int(os.environ.get("LLM_MAX_TOKENS", "4096")),
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
         notion_journal_ds=os.environ.get("NOTION_JOURNAL_DS", ""),
+        mcp_auth_token=os.environ.get("MCP_AUTH_TOKEN", ""),
+        mcp_oauth_proxy_url=os.environ.get("MCP_OAUTH_PROXY_URL", ""),
+        mcp_auth_refresh_days=int(os.environ.get("MCP_AUTH_REFRESH_DAYS", "180")),
         mcp_servers=_json_env("MCP_SERVERS", {}),
     )
