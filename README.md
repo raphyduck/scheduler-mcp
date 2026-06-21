@@ -110,6 +110,16 @@ Le module scheduler_mcp/executors/agent.py appelle l'API Anthropic Messages avec
 - Trace complete dans runs.detail : texte, appels d'outils (serveur/outil + arguments), resultats, usage et stop_reason. Un refus (refusal) ressort en failure.
 - Least privilege / securite : Bitwarden (bw) est exclu du toolset, jamais auto-attribue a un job agent. Sans ANTHROPIC_API_KEY, le client est absent et le job ressort en failure explicite. Aucun secret n'est logge.
 
+## Compiler / registration
+
+Le module scheduler_mcp/compiler.py transforme une demande en langage naturel en job structure (Compiler.compile). C'est le cerveau de la registration : il sera appele par l'interface serveur MCP (commit 10) pour que l'app Claude et l'agent vocal creent des rappels en langage naturel. Le type reste modifiable a posteriori.
+
+Sortie (CompiledJob) : type (notification | script | agent), payload compile, toolset scope, schedule infere (cron ou ISO), classif_reason, statut, et raisons de sensibilite.
+
+- Classification : un appel LLM (Anthropic, modele LLM_MODEL) classe la demande et compile le payload. Un repli heuristique (mots-cles) prend le relais sans cle d'API ou si la reponse est inexploitable (JSON tolerant au texte autour) ; en repli, script et agent passent en a_valider (validation humaine).
+- Least privilege : le toolset n'est garde que pour le type agent et restreint aux outils autorises (imap, browser, voicecall, twilio, whatsapp, notion, ssh) ; Bitwarden est toujours retire.
+- Gate de sensibilite : un script touchant du sensible (classify_sensitivity, partage avec l'executor script) est cree en statut a_valider, avec les raisons reportees dans classif_reason.
+
 ## Configuration
 
 Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est committe.
@@ -130,9 +140,10 @@ Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique l
     python -m tests.test_notification
     python -m tests.test_script
     python -m tests.test_agent
+    python -m tests.test_compiler
 
-Suites autonomes (stdlib + aiosqlite ; faux client Notion, faux client Anthropic et invoker MCP simules ; test_script lance de vrais subprocess locaux ; aucune dependance reseau). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, execution de script (capture, timeout, isolation env, sensibilite), et executor agent (mapping toolset vers mcp_servers, boucle pause_turn, trace, exclusion Bitwarden).
+Suites autonomes (stdlib + aiosqlite ; faux client Notion, faux client Anthropic et invoker MCP simules ; test_script lance de vrais subprocess locaux ; aucune dependance reseau). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, execution de script (capture, timeout, isolation env, sensibilite), executor agent (mapping toolset vers mcp_servers, boucle pause_turn, trace, exclusion Bitwarden), et compiler (classification, scope du toolset, gate a_valider, repli heuristique).
 
 ## Etat
 
-Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + les trois executors : notification (canal email / WhatsApp / SMS), script (subprocess isole, capture, timeout, gate de sensibilite) et agent (Anthropic Messages + connecteur MCP, boucle d'outils, trace). Restent le compiler, le Journal et la couche outils MCP des canaux selon BUILD_BRIEF.md.
+Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + les trois executors notification / script / agent + compiler de registration (langage naturel vers job structure, least privilege, gate a_valider). Restent le Journal, l'interface serveur MCP et la couche outils MCP des canaux selon BUILD_BRIEF.md.
