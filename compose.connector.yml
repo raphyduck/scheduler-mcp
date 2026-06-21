@@ -1,0 +1,34 @@
+# Exposition du serveur MCP du scheduler comme connecteur claude.ai.
+# Le proxy (node) spawn le serveur MCP stdio python ; Caddy route le sous-domaine.
+networks:
+  mcp_edge:
+    external: true
+services:
+  schedmcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.connector
+    image: scheduler-mcp-connector
+    container_name: mcp-schedmcp
+    working_dir: /opt/oauth-proxy
+    command: ["node", "src/index.js"]
+    env_file:
+      - /home/raph/docker_images/_shared/mcp-oauth-proxy/.env.sched
+    environment:
+      - HOME=/root
+      - MCP_COMMAND=/opt/venv/bin/python
+      - MCP_ARGS=-m scheduler_mcp.mcp_server
+      - PYTHONPATH=/opt/scheduler
+      - SQLITE_PATH=/data/scheduler.db
+      - OAUTH_DATA_DIR=/oauth-data
+    volumes:
+      - /home/raph/docker_images/_shared/mcp-oauth-proxy:/opt/oauth-proxy:ro
+      - /home/raph/docker_images/scheduler-mcp:/opt/scheduler:ro
+      - /home/raph/docker_images/scheduler-mcp/data:/data:rw
+      - /home/raph/docker_images/_shared/mcp-oauth-proxy-data:/oauth-data:rw
+    restart: unless-stopped
+    networks:
+      - mcp_edge
+    labels:
+      caddy: http://schedmcp.hobbitton.at
+      caddy.reverse_proxy: "{{upstreams 3010}}"
