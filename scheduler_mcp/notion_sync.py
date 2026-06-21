@@ -246,6 +246,11 @@ class NotionClient:
             "PATCH", f"/pages/{page_id}", json={"properties": properties}
         )
 
+    async def create_page(self, parent: dict, properties: dict) -> dict:
+        return await self._request(
+            "POST", "/pages", json={"parent": parent, "properties": properties}
+        )
+
 
 # ----- write-back -----
 

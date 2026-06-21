@@ -172,6 +172,33 @@ async def test_borne_de_concurrence(ledger: Ledger) -> None:
     assert slow.peak <= 2, f"pic de concurrence {slow.peak} > 2"
 
 
+class RecordingJournal:
+    """Journal factice : enregistre les appels et renvoie un id de page."""
+
+    enabled = True
+
+    def __init__(self) -> None:
+        self.records: list[tuple] = []
+
+    async def record(self, *, nom, type_, result, detail):
+        self.records.append((nom, type_, result, detail))
+        return "jpage-1"
+
+
+async def test_journal_enregistre(ledger: Ledger) -> None:
+    cfg = make_cfg()
+    disp = Dispatcher({"notification": RecordingExecutor()})
+    job_id = await _seed(ledger, "job-1")
+    journal = RecordingJournal()
+
+    tasks = await tick_once(cfg, ledger, disp, asyncio.Semaphore(4), "o", journal=journal)
+    await asyncio.gather(*tasks)
+
+    assert journal.records == [("job-1", "notification", "success", "fait")]
+    run = (await ledger.list_runs(job_id))[0]
+    assert run["journal_page_id"] == "jpage-1"
+
+
 async def main() -> None:
     tests = [
         test_dispatch_et_cloture,
@@ -181,6 +208,7 @@ async def main() -> None:
         test_executor_en_erreur,
         test_type_sans_executor_skipped,
         test_borne_de_concurrence,
+        test_journal_enregistre,
     ]
     with tempfile.TemporaryDirectory() as tmp:
         for i, test in enumerate(tests):

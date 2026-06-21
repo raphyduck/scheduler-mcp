@@ -37,6 +37,9 @@ class Config:
     llm_model: str
     llm_max_tokens: int
     log_level: str
+    # Data source de la base Journal (optionnel) : si absent, le parent de page
+    # utilise database_id (notion_journal_db).
+    notion_journal_ds: str = ""
     # Registre des serveurs MCP du fleet : nom -> {url, authorization_token?}.
     # Alimente l'executor agent (toolset du job). Les tokens ne sont jamais logges.
     mcp_servers: dict = field(default_factory=dict)
@@ -74,5 +77,6 @@ def load_config() -> Config:
         llm_model=os.environ.get("LLM_MODEL", "claude-haiku-4-5"),
         llm_max_tokens=int(os.environ.get("LLM_MAX_TOKENS", "4096")),
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
+        notion_journal_ds=os.environ.get("NOTION_JOURNAL_DS", ""),
         mcp_servers=_json_env("MCP_SERVERS", {}),
     )
