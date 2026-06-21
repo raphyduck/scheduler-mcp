@@ -12,9 +12,10 @@ from .executors.agent import AgentExecutor, build_default_client
 from .executors.base import Dispatcher
 from .executors.notification import NotificationExecutor, UnconfiguredInvoker
 from .executors.script import ScriptExecutor
+from .journal import Journal
 from .ledger import Ledger
 from .logging_conf import get_logger, setup_logging
-from .notion_sync import sync_once
+from .notion_sync import NotionClient, sync_once
 from .tick import tick_loop
 
 log = get_logger("scheduler_mcp.main")
@@ -48,9 +49,12 @@ async def main() -> None:
     ledger = await Ledger(cfg.sqlite_path).connect()
     log.info("ledger.ready", path=cfg.sqlite_path)
     dispatcher = build_dispatcher(cfg)
+    notion = NotionClient(cfg.notion_token, cfg.notion_version) if cfg.notion_token else None
+    journal = Journal(cfg, notion=notion)
+    log.info("journal.ready", enabled=journal.enabled)
     try:
         await asyncio.gather(
-            tick_loop(cfg, ledger, dispatcher), sync_loop(cfg, ledger)
+            tick_loop(cfg, ledger, dispatcher, journal), sync_loop(cfg, ledger)
         )
     finally:
         await ledger.close()

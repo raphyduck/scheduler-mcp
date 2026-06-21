@@ -69,6 +69,7 @@ Chaque worker (_run_job) :
 - reclame le creneau (start_run) ; si le creneau a deja un run, il n'est pas rejoue (idempotence) ;
 - dispatche vers l'executor du type de job (Dispatcher) ; une exception de l'executor devient un run failure, jamais un crash ;
 - cloture le run (finish_run, report last_run / last_result sur le job) ;
+- append le run au Journal Notion et memorise la page dans runs.journal_page_id (voir Journal) ;
 - avance next_run au prochain creneau futur (rattrapage en une fois, pas de replay de tous les creneaux manques) ;
 - libere le verrou.
 
@@ -120,6 +121,14 @@ Sortie (CompiledJob) : type (notification | script | agent), payload compile, to
 - Least privilege : le toolset n'est garde que pour le type agent et restreint aux outils autorises (imap, browser, voicecall, twilio, whatsapp, notion, ssh) ; Bitwarden est toujours retire.
 - Gate de sensibilite : un script touchant du sensible (classify_sensitivity, partage avec l'executor script) est cree en statut a_valider, avec les raisons reportees dans classif_reason.
 
+## Journal
+
+Le module scheduler_mcp/journal.py append une entree dans la base Journal Notion apres chaque run (log append-only), et memorise l'id de page dans runs.journal_page_id. La boucle de tick l'appelle juste apres la cloture du run.
+
+- Champs ecrits, noms exacts (accents obligatoires) : Action (titre, « <nom> : <result> »), Détail (texte, detail du run tronque), Source (texte, « scheduler-mcp »), Agent (texte, toujours « Claude (assistant) »), Type (select, type du job).
+- Parent de page : data_source_id si NOTION_JOURNAL_DS est renseigne (API 2025-09-03), sinon database_id (NOTION_JOURNAL_DB).
+- Best effort : sans NOTION_TOKEN / base Journal le Journal est desactive ; une erreur Notion n'echoue jamais un run (deja cloture cote ledger).
+
 ## Configuration
 
 Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est committe.
@@ -141,9 +150,10 @@ Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique l
     python -m tests.test_script
     python -m tests.test_agent
     python -m tests.test_compiler
+    python -m tests.test_journal
 
-Suites autonomes (stdlib + aiosqlite ; faux client Notion, faux client Anthropic et invoker MCP simules ; test_script lance de vrais subprocess locaux ; aucune dependance reseau). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, execution de script (capture, timeout, isolation env, sensibilite), executor agent (mapping toolset vers mcp_servers, boucle pause_turn, trace, exclusion Bitwarden), et compiler (classification, scope du toolset, gate a_valider, repli heuristique).
+Suites autonomes (stdlib + aiosqlite ; faux client Notion, faux client Anthropic et invoker MCP simules ; test_script lance de vrais subprocess locaux ; aucune dependance reseau). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, execution de script (capture, timeout, isolation env, sensibilite), executor agent (mapping toolset vers mcp_servers, boucle pause_turn, trace, exclusion Bitwarden), compiler (classification, scope du toolset, gate a_valider, repli heuristique), et Journal (champs exacts avec accents, Agent constant, parent de page, resilience).
 
 ## Etat
 
-Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + les trois executors notification / script / agent + compiler de registration (langage naturel vers job structure, least privilege, gate a_valider). Restent le Journal, l'interface serveur MCP et la couche outils MCP des canaux selon BUILD_BRIEF.md.
+Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + les trois executors notification / script / agent + compiler de registration (least privilege, gate a_valider) + Journal Notion append-only apres chaque run. Restent l'interface serveur MCP (optionnel), l'auth machine MCP et la couche outils MCP des canaux selon BUILD_BRIEF.md.
