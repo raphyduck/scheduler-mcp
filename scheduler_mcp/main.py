@@ -10,6 +10,7 @@ import asyncio
 from .config import Config, load_config
 from .executors.base import Dispatcher
 from .executors.notification import NotificationExecutor, UnconfiguredInvoker
+from .executors.script import ScriptExecutor
 from .ledger import Ledger
 from .logging_conf import get_logger, setup_logging
 from .notion_sync import sync_once
@@ -32,6 +33,7 @@ def build_dispatcher(cfg: Config) -> Dispatcher:
     # Les executors script et agent s'enregistrent aux commits 6 et 7.
     dispatcher = Dispatcher()
     dispatcher.register("notification", NotificationExecutor(UnconfiguredInvoker()))
+    dispatcher.register("script", ScriptExecutor(default_timeout=cfg.script_timeout_seconds))
     return dispatcher
 
 
