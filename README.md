@@ -56,6 +56,24 @@ Mapping des proprietes Programmation vers le ledger : Nom -> nom, type -> type, 
 
 L'API Notion est appelee en version NOTION_VERSION (defaut 2025-09-03, endpoints data sources). Sans NOTION_TOKEN, la sync est sautee et le service reste demarrable. Les entrees supprimees cote Notion ne sont pas encore purgees du ledger (a traiter ulterieurement).
 
+## Boucle de tick
+
+Le module scheduler_mcp/tick.py declenche les jobs. Toutes les TICK_INTERVAL_SECONDS (defaut 60s), un tick (tick_once) :
+
+1. Lit les jobs dus via due_jobs (statut actif, next_run echue, y compris en retard).
+2. Pour chaque job, tente le verrou (acquire_lock, TTL LOCK_TTL_SECONDS, defaut 900s). Un job deja verrouille est saute : pas de double dispatch, meme si un tick se chevauche ou apres un redemarrage.
+3. Lance un worker par job verrouille, borne par un semaphore (MAX_CONCURRENT_RUNS).
+
+Chaque worker (_run_job) :
+
+- reclame le creneau (start_run) ; si le creneau a deja un run, il n'est pas rejoue (idempotence) ;
+- dispatche vers l'executor du type de job (Dispatcher) ; une exception de l'executor devient un run failure, jamais un crash ;
+- cloture le run (finish_run, report last_run / last_result sur le job) ;
+- avance next_run au prochain creneau futur (rattrapage en une fois, pas de replay de tous les creneaux manques) ;
+- libere le verrou.
+
+Les executors concrets (notification, script, agent) sont ajoutes aux commits 5 a 7 et s'enregistrent via Dispatcher.register. En attendant, un type sans executor produit un run skipped explicite. Les boucles de tick et de sync isolent leurs erreurs pour ne jamais tuer le service.
+
 ## Configuration
 
 Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est committe.
@@ -72,9 +90,10 @@ Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique l
 
     python -m tests.test_ledger
     python -m tests.test_notion_sync
+    python -m tests.test_tick
 
-Suites autonomes (stdlib + aiosqlite, faux client Notion sans reseau) couvrant WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents et write-back.
+Suites autonomes (stdlib + aiosqlite, faux client Notion et executors simules, sans reseau) couvrant WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch et borne de concurrence.
 
 ## Etat
 
-Scaffold + ledger SQLite + sync Notion vers SQLite (pull Programmation, calcul next_run via croniter, write-back statut / derniere execution / prochain run). Suite des commits selon BUILD_BRIEF.md.
+Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (dispatch des jobs dus vers un pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage). Restent les executors concrets et le reste du decoupage selon BUILD_BRIEF.md.
