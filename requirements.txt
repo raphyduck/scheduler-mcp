@@ -2,3 +2,4 @@ anthropic
 httpx
 aiosqlite
 croniter
+mcp

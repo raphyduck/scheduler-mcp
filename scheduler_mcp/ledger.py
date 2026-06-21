@@ -258,6 +258,32 @@ class Ledger:
         )
         await self.db.commit()
 
+    # Colonnes modifiables via update_job. payload/toolset sont serialises en JSON.
+    _UPDATABLE = ("nom", "type", "schedule", "statut", "classif_reason", "next_run")
+    _UPDATABLE_JSON = ("payload", "toolset")
+
+    async def update_job(self, job_id: int, **changes: Any) -> bool:
+        """Met a jour les colonnes fournies d'un job. Retourne True si le job existe."""
+        cols: list[str] = []
+        params: list[Any] = []
+        for key in self._UPDATABLE:
+            if key in changes:
+                cols.append(f"{key} = ?")
+                params.append(changes[key])
+        for key in self._UPDATABLE_JSON:
+            if key in changes:
+                cols.append(f"{key} = ?")
+                params.append(_dumps(changes[key]))
+        if not cols:
+            return await self.get_job(job_id) is not None
+        params.append(now_iso())
+        params.append(job_id)
+        cur = await self.db.execute(
+            f"UPDATE jobs SET {', '.join(cols)}, updated_at = ? WHERE id = ?", params
+        )
+        await self.db.commit()
+        return cur.rowcount == 1
+
     # ----- selection des jobs dus (boucle de tick) -----
 
     async def due_jobs(self, now: Optional[str] = None) -> list[dict]:

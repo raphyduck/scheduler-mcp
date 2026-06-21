@@ -129,6 +129,18 @@ Le module scheduler_mcp/journal.py append une entree dans la base Journal Notion
 - Parent de page : data_source_id si NOTION_JOURNAL_DS est renseigne (API 2025-09-03), sinon database_id (NOTION_JOURNAL_DB).
 - Best effort : sans NOTION_TOKEN / base Journal le Journal est desactive ; une erreur Notion n'echoue jamais un run (deja cloture cote ledger).
 
+## Interface serveur MCP
+
+Le module scheduler_mcp/mcp_server.py expose trois outils MCP pour que l'app Claude et l'agent vocal creent et pilotent des rappels en langage naturel :
+
+- add_task(description, nom?) : compile la description (Compiler) et inscrit la tache dans le ledger. La tache devient immediatement ordonnancable par la boucle de tick. Sans echeance, elle s'execute au prochain tick (one-shot) ; un script sensible est cree en statut a_valider.
+- list_tasks(statut?) : liste compacte des taches (filtre optionnel par statut).
+- update_task(task_id, statut?, type?, schedule?) : met a jour une tache (par exemple activer un script a_valider, ou changer l'echeance, ce qui recalcule next_run).
+
+La logique vit dans TaskService (testable contre le ledger) ; un mince wrapper FastMCP l'expose en serveur MCP (import paresseux du paquet mcp). Les taches creees ici utilisent un identifiant interne mcp:<uuid> et coexistent avec les entrees synchronisees depuis Notion. Lancer le serveur :
+
+    python -m scheduler_mcp.mcp_server
+
 ## Configuration
 
 Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est committe.
@@ -151,9 +163,10 @@ Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique l
     python -m tests.test_agent
     python -m tests.test_compiler
     python -m tests.test_journal
+    python -m tests.test_mcp_server
 
-Suites autonomes (stdlib + aiosqlite ; faux client Notion, faux client Anthropic et invoker MCP simules ; test_script lance de vrais subprocess locaux ; aucune dependance reseau). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, execution de script (capture, timeout, isolation env, sensibilite), executor agent (mapping toolset vers mcp_servers, boucle pause_turn, trace, exclusion Bitwarden), compiler (classification, scope du toolset, gate a_valider, repli heuristique), et Journal (champs exacts avec accents, Agent constant, parent de page, resilience).
+Suites autonomes (stdlib + aiosqlite ; faux client Notion, faux client Anthropic et invoker MCP simules ; test_script lance de vrais subprocess locaux ; aucune dependance reseau). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, execution de script (capture, timeout, isolation env, sensibilite), executor agent (mapping toolset vers mcp_servers, boucle pause_turn, trace, exclusion Bitwarden), compiler (classification, scope du toolset, gate a_valider, repli heuristique), Journal (champs exacts avec accents, Agent constant, parent de page, resilience), et interface serveur MCP (add/list/update, echeance, gate a_valider).
 
 ## Etat
 
-Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + les trois executors notification / script / agent + compiler de registration (least privilege, gate a_valider) + Journal Notion append-only apres chaque run. Restent l'interface serveur MCP (optionnel), l'auth machine MCP et la couche outils MCP des canaux selon BUILD_BRIEF.md.
+Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + les trois executors notification / script / agent + compiler de registration (least privilege, gate a_valider) + Journal Notion append-only apres chaque run + interface serveur MCP (add/list/update de taches en langage naturel). Restent l'auth machine MCP (token long-lived, refresh cote mcp-oauth-proxy) et la couche outils MCP des canaux selon BUILD_BRIEF.md.
