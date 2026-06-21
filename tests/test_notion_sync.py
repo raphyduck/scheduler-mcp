@@ -50,7 +50,9 @@ def make_cfg() -> Config:
         lock_ttl_seconds=900,
         script_timeout_seconds=300,
         llm_model="claude-haiku-4-5",
+        llm_max_tokens=4096,
         log_level="INFO",
+        mcp_servers={},
     )
 
 
@@ -204,7 +206,7 @@ async def test_sync_once_skip_sans_token() -> None:
         notion_programmation_ds="", notion_journal_db="", sqlite_path=":memory:",
         tick_interval_seconds=60, notion_sync_interval_seconds=300,
         max_concurrent_runs=4, lock_ttl_seconds=900, script_timeout_seconds=300,
-        llm_model="x", log_level="INFO",
+        llm_model="x", llm_max_tokens=4096, log_level="INFO", mcp_servers={},
     )
     async with Ledger(":memory:") as ledger:
         assert await sync_once(cfg, ledger, notion=FakeNotion([])) == 0

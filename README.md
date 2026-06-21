@@ -98,6 +98,18 @@ Le module scheduler_mcp/executors/script.py execute un script deterministe dans 
 - Capture stdout, stderr et code retour dans le detail du run. Code retour 0 -> success, sinon failure. Depassement du delai (SCRIPT_TIMEOUT_SECONDS, surchargeable par le payload) -> le groupe de process est tue, run failure.
 - Gate de sensibilite : classify_sensitivity detecte les operations a risque (suppression, acces credentials/Bitwarden, transfert reseau externe, arret machine...). Le compiler (commit 8) s'en servira pour creer en statut a_valider tout script sensible, qui n'atteint l'executor qu'une fois passe en actif. L'executor journalise la sensibilite (audit) et peut la bloquer durement (option block_sensitive).
 
+### Agent (LLM avec outils MCP)
+
+Le module scheduler_mcp/executors/agent.py appelle l'API Anthropic Messages avec le connecteur MCP. Le toolset du job est mappe vers des serveurs MCP du fleet, exposes au modele et executes cote serveur Anthropic. Le payload decrit la tache :
+
+    {"instruction": "Trie ma boite mail et resume les urgents", "system": "Tu es concis", "max_tokens": 4096}
+
+- Le modele utilise est LLM_MODEL (configurable), avec LLM_MAX_TOKENS par defaut (surchargeable par le payload).
+- Le toolset du job (multi-select Programmation) est resolu via le registre MCP_SERVERS (JSON nom -> {url, authorization_token?}). Chaque serveur devient une entree mcp_servers + un mcp_toolset, avec le header beta du connecteur MCP. Un serveur absent du registre est ignore avec un avertissement trace.
+- Boucle d'outils : la requete est relancee tant que le serveur renvoie stop_reason pause_turn (reprise de la sequence d'outils MCP), avec un plafond d'iterations.
+- Trace complete dans runs.detail : texte, appels d'outils (serveur/outil + arguments), resultats, usage et stop_reason. Un refus (refusal) ressort en failure.
+- Least privilege / securite : Bitwarden (bw) est exclu du toolset, jamais auto-attribue a un job agent. Sans ANTHROPIC_API_KEY, le client est absent et le job ressort en failure explicite. Aucun secret n'est logge.
+
 ## Configuration
 
 Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est committe.
@@ -117,9 +129,10 @@ Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique l
     python -m tests.test_tick
     python -m tests.test_notification
     python -m tests.test_script
+    python -m tests.test_agent
 
-Suites autonomes (stdlib + aiosqlite, faux client Notion, executors et invoker MCP simules ; test_script lance de vrais subprocess locaux). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, et execution de script (capture, timeout, isolation env, classification de sensibilite).
+Suites autonomes (stdlib + aiosqlite ; faux client Notion, faux client Anthropic et invoker MCP simules ; test_script lance de vrais subprocess locaux ; aucune dependance reseau). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, execution de script (capture, timeout, isolation env, sensibilite), et executor agent (mapping toolset vers mcp_servers, boucle pause_turn, trace, exclusion Bitwarden).
 
 ## Etat
 
-Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + executors notification (canal email / WhatsApp / SMS) et script (subprocess isole, capture, timeout, gate de sensibilite). Restent l'executor agent, le compiler, le Journal et la couche outils MCP selon BUILD_BRIEF.md.
+Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + les trois executors : notification (canal email / WhatsApp / SMS), script (subprocess isole, capture, timeout, gate de sensibilite) et agent (Anthropic Messages + connecteur MCP, boucle d'outils, trace). Restent le compiler, le Journal et la couche outils MCP des canaux selon BUILD_BRIEF.md.
