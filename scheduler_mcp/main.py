@@ -1,13 +1,14 @@
 """Point d'entree. Lance la boucle de tick et la boucle de sync Notion.
 
 La sync Notion -> SQLite et la boucle de tick (dispatch des jobs dus vers un pool
-de workers borne) sont actives. Les executors concrets arrivent aux commits 5 a 7 ;
-en attendant, un type sans executor produit un run skipped explicite.
+de workers borne) sont actives. Les trois executors (notification, script, agent)
+sont enregistres ; un type inconnu produit un run skipped explicite.
 """
 
 import asyncio
 
 from .config import Config, load_config
+from .executors.agent import AgentExecutor, build_default_client
 from .executors.base import Dispatcher
 from .executors.notification import NotificationExecutor, UnconfiguredInvoker
 from .executors.script import ScriptExecutor
@@ -29,11 +30,14 @@ async def sync_loop(cfg: Config, ledger: Ledger) -> None:
 
 
 def build_dispatcher(cfg: Config) -> Dispatcher:
-    # UnconfiguredInvoker tant que la couche outils MCP n'est pas branchee (commit 11).
-    # Les executors script et agent s'enregistrent aux commits 6 et 7.
+    # UnconfiguredInvoker pour la notification tant que la couche outils MCP des
+    # canaux n'est pas branchee (commit 11). L'agent utilise le connecteur MCP de
+    # l'API Messages : sans cle Anthropic, son client est None et le job ressort
+    # en failure explicite.
     dispatcher = Dispatcher()
     dispatcher.register("notification", NotificationExecutor(UnconfiguredInvoker()))
     dispatcher.register("script", ScriptExecutor(default_timeout=cfg.script_timeout_seconds))
+    dispatcher.register("agent", AgentExecutor(cfg, client=build_default_client(cfg)))
     return dispatcher
 
 
