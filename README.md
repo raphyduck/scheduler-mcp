@@ -74,6 +74,18 @@ Chaque worker (_run_job) :
 
 Les executors concrets (notification, script, agent) sont ajoutes aux commits 5 a 7 et s'enregistrent via Dispatcher.register. En attendant, un type sans executor produit un run skipped explicite. Les boucles de tick et de sync isolent leurs erreurs pour ne jamais tuer le service.
 
+## Executors
+
+### Notification (zero LLM)
+
+Le module scheduler_mcp/executors/notification.py envoie un message sur un canal. Le payload du job decrit le message :
+
+    {"canal": "email", "destinataire": "x@y.com", "sujet": "Rappel", "message": "..."}
+
+Canaux supportes (scheduler_mcp/executors/channels.py), avec alias tolerants : email / mail / imap, whatsapp / wa, sms / twilio / texto. Champs du payload tolerants aux alias (destinataire/to/recipient/numero, sujet/subject/objet, corps/message/body/texte) ; une cle options est fusionnee dans les arguments de l'outil (par exemple account_id pour l'email).
+
+Chaque canal (interface Channel) traduit le message en ToolCall (serveur MCP + outil + arguments) : email -> imap_send_email, whatsapp -> send_message, sms -> send_sms. L'execution reelle de l'appel est deleguee a un ToolInvoker. La couche outils MCP du fleet est branchee au commit 11 ; en attendant, l'invoker par defaut echoue proprement et le job ressort en run failure (jamais de crash).
+
 ## Configuration
 
 Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est committe.
@@ -91,9 +103,10 @@ Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique l
     python -m tests.test_ledger
     python -m tests.test_notion_sync
     python -m tests.test_tick
+    python -m tests.test_notification
 
-Suites autonomes (stdlib + aiosqlite, faux client Notion et executors simules, sans reseau) couvrant WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch et borne de concurrence.
+Suites autonomes (stdlib + aiosqlite, faux client Notion, executors et invoker MCP simules, sans reseau) couvrant WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence et envoi de notification par canal.
 
 ## Etat
 
-Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (dispatch des jobs dus vers un pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage). Restent les executors concrets et le reste du decoupage selon BUILD_BRIEF.md.
+Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + executor notification (interface de canal email / WhatsApp / SMS). Restent les executors script et agent, le compiler, le Journal et la couche outils MCP selon BUILD_BRIEF.md.
