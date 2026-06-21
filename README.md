@@ -86,6 +86,18 @@ Canaux supportes (scheduler_mcp/executors/channels.py), avec alias tolerants : e
 
 Chaque canal (interface Channel) traduit le message en ToolCall (serveur MCP + outil + arguments) : email -> imap_send_email, whatsapp -> send_message, sms -> send_sms. L'execution reelle de l'appel est deleguee a un ToolInvoker. La couche outils MCP du fleet est branchee au commit 11 ; en attendant, l'invoker par defaut echoue proprement et le job ressort en run failure (jamais de crash).
 
+### Script (zero LLM)
+
+Le module scheduler_mcp/executors/script.py execute un script deterministe dans un subprocess isole. Le payload decrit la commande :
+
+    {"args": ["python3", "/data/scripts/backup.py"], "timeout": 120}
+    {"command": "rsync -a /src /dst", "shell": true, "env": {"KEY": "val"}}
+
+- args (argv en liste, recommande) ou command (chaine ; decoupee par shlex en mode non-shell, ou passee au shell si shell=true). Champs cwd, env, timeout optionnels.
+- Isolation : environnement reduit (PATH + env du payload uniquement) pour que le script n'herite pas des secrets du parent ; nouveau groupe de process ; stdin ferme.
+- Capture stdout, stderr et code retour dans le detail du run. Code retour 0 -> success, sinon failure. Depassement du delai (SCRIPT_TIMEOUT_SECONDS, surchargeable par le payload) -> le groupe de process est tue, run failure.
+- Gate de sensibilite : classify_sensitivity detecte les operations a risque (suppression, acces credentials/Bitwarden, transfert reseau externe, arret machine...). Le compiler (commit 8) s'en servira pour creer en statut a_valider tout script sensible, qui n'atteint l'executor qu'une fois passe en actif. L'executor journalise la sensibilite (audit) et peut la bloquer durement (option block_sensitive).
+
 ## Configuration
 
 Copier .env.example vers .env et renseigner les valeurs. Aucun secret n'est committe.
@@ -104,9 +116,10 @@ Au demarrage, le service ouvre le ledger (SQLITE_PATH, volume /data), applique l
     python -m tests.test_notion_sync
     python -m tests.test_tick
     python -m tests.test_notification
+    python -m tests.test_script
 
-Suites autonomes (stdlib + aiosqlite, faux client Notion, executors et invoker MCP simules, sans reseau) couvrant WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence et envoi de notification par canal.
+Suites autonomes (stdlib + aiosqlite, faux client Notion, executors et invoker MCP simules ; test_script lance de vrais subprocess locaux). Couvrent WAL, migrations, idempotence, verrou par job, calcul de next_run, mapping tolerant aux accents, write-back, dispatch, anti double-dispatch, borne de concurrence, envoi de notification par canal, et execution de script (capture, timeout, isolation env, classification de sensibilite).
 
 ## Etat
 
-Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + executor notification (interface de canal email / WhatsApp / SMS). Restent les executors script et agent, le compiler, le Journal et la couche outils MCP selon BUILD_BRIEF.md.
+Scaffold + ledger SQLite + sync Notion vers SQLite + boucle de tick (pool de workers borne, verrou anti double-dispatch, idempotence, rattrapage) + executors notification (canal email / WhatsApp / SMS) et script (subprocess isole, capture, timeout, gate de sensibilite). Restent l'executor agent, le compiler, le Journal et la couche outils MCP selon BUILD_BRIEF.md.
