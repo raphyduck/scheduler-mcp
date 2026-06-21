@@ -9,6 +9,7 @@ import asyncio
 
 from .config import Config, load_config
 from .executors.base import Dispatcher
+from .executors.notification import NotificationExecutor, UnconfiguredInvoker
 from .ledger import Ledger
 from .logging_conf import get_logger, setup_logging
 from .notion_sync import sync_once
@@ -27,8 +28,11 @@ async def sync_loop(cfg: Config, ledger: Ledger) -> None:
 
 
 def build_dispatcher(cfg: Config) -> Dispatcher:
-    # Les executors concrets s'enregistrent ici aux commits 5 a 7.
-    return Dispatcher()
+    # UnconfiguredInvoker tant que la couche outils MCP n'est pas branchee (commit 11).
+    # Les executors script et agent s'enregistrent aux commits 6 et 7.
+    dispatcher = Dispatcher()
+    dispatcher.register("notification", NotificationExecutor(UnconfiguredInvoker()))
+    return dispatcher
 
 
 async def main() -> None:
