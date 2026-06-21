@@ -101,6 +101,7 @@ class TaskService:
         statut: Optional[str] = None,
         type: Optional[str] = None,
         schedule: Optional[str] = None,
+        description: Optional[str] = None,
     ) -> dict:
         await self._ensure()
         job = await self._ledger.get_job(task_id)
@@ -114,6 +115,8 @@ class TaskService:
             changes["statut"] = statut
         if type is not None:
             changes["type"] = type
+        if description is not None:
+            changes["payload"] = {"command": description}
         if schedule is not None:
             changes["schedule"] = schedule or None
             # Recalcule l'echeance a partir du nouveau schedule (ancre sur last_run).
@@ -152,9 +155,10 @@ def create_mcp_app(service: TaskService):
         statut: Optional[str] = None,
         type: Optional[str] = None,
         schedule: Optional[str] = None,
+        description: Optional[str] = None,
     ) -> dict:
-        """Met a jour une tache : statut (ex. activer un script a_valider), type ou echeance."""
-        return await service.update_task(task_id, statut=statut, type=type, schedule=schedule)
+        """Met a jour une tache : statut (en pause / actif / a_valider / termine), type, echeance (cron/date) ou description (reecrit les instructions de la tache)."""
+        return await service.update_task(task_id, statut=statut, type=type, schedule=schedule, description=description)
 
     return app
 
