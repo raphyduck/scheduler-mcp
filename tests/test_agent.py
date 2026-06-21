@@ -166,6 +166,33 @@ def test_instruction_absente() -> None:
     assert "instruction" in res.detail
 
 
+class FakeAuth:
+    def __init__(self, tok):
+        self._tok = tok
+        self.calls = 0
+
+    async def token(self):
+        self.calls += 1
+        return self._tok
+
+
+def test_injection_token_machine() -> None:
+    # imap sans token propre -> token machine injecte ; notion garde le sien.
+    registry = {
+        "imap": {"url": "https://fleet/imap/mcp"},
+        "notion": {"url": "https://fleet/notion/mcp", "authorization_token": "own-notion"},
+    }
+    client = FakeClient([response([text_block("ok")])])
+    auth = FakeAuth("machine-tok")
+    execu = AgentExecutor(make_cfg(registry), client=client, auth=auth)
+    run(execu.execute(_job({"instruction": "x"}, toolset=["imap", "notion"])))
+
+    servers = {s["name"]: s for s in client.messages.calls[0]["mcp_servers"]}
+    assert servers["imap"]["authorization_token"] == "machine-tok"
+    assert servers["notion"]["authorization_token"] == "own-notion"
+    assert auth.calls == 1
+
+
 def test_payload_json_string_et_system() -> None:
     client = FakeClient([response([text_block("ok")])])
     execu = AgentExecutor(make_cfg(), client=client)
@@ -185,6 +212,7 @@ def main() -> None:
         test_pause_turn_boucle_bornee,
         test_client_absent,
         test_instruction_absente,
+        test_injection_token_machine,
         test_payload_json_string_et_system,
     ]:
         test()

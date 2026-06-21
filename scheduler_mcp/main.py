@@ -7,6 +7,7 @@ sont enregistres ; un type inconnu produit un run skipped explicite.
 
 import asyncio
 
+from .auth import MachineAuth
 from .config import Config, load_config
 from .executors.agent import AgentExecutor, build_default_client
 from .executors.base import Dispatcher
@@ -38,7 +39,8 @@ def build_dispatcher(cfg: Config) -> Dispatcher:
     dispatcher = Dispatcher()
     dispatcher.register("notification", NotificationExecutor(UnconfiguredInvoker()))
     dispatcher.register("script", ScriptExecutor(default_timeout=cfg.script_timeout_seconds))
-    dispatcher.register("agent", AgentExecutor(cfg, client=build_default_client(cfg)))
+    auth = MachineAuth(cfg)  # token machine injecte dans les serveurs MCP du fleet
+    dispatcher.register("agent", AgentExecutor(cfg, client=build_default_client(cfg), auth=auth))
     return dispatcher
 
 
